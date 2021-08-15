@@ -14,6 +14,7 @@ import time
 KAFKA_BROKER = "kafka:19092"
 TOPIC = "warning"
 
+
 def getSparkSessionInstance(sparkConf):
     if ('sparkSessionSingletonInstance' not in globals()):
         globals()['sparkSessionSingletonInstance'] = SparkSession \
@@ -42,16 +43,19 @@ if __name__ == "__main__":
 
 
     def reduceFunc(a, b):
-        return (a[0]+b[0], a[1]+b[1])
+        return (a[0] + b[0], a[1] + b[1])
         return b
 
+
     def invFunc(a, b):
-        return (a[0]-b[0], a[1]-b[1])
+        return (a[0] - b[0], a[1] - b[1])
+
 
     def mapGlucoseValue(json_value):
         ptID = json_value["PtID"]
         value = json_value["GlucoseValue"]
         return (ptID, (value, 1))
+
 
     def filterFunction(value):
         if value[1] > 180:
@@ -63,8 +67,8 @@ if __name__ == "__main__":
         return False
 
 
-    values = lines.map(mapGlucoseValue).reduceByKeyAndWindow(reduceFunc, invFunc, 20, 5)\
-        .map(lambda k: (k[0], k[1][0]/k[1][1])).filter(filterFunction)
+    values = lines.map(mapGlucoseValue).reduceByKeyAndWindow(reduceFunc, invFunc, 20, 5) \
+        .map(lambda k: (k[0], k[1][0] / k[1][1])).filter(filterFunction)
     values.pprint(30)
 
     ssc.start()
