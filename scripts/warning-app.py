@@ -59,17 +59,19 @@ if __name__ == "__main__":
 
     def filterFunction(value):
         if value[1] > 180:
-            print("Patient: " + str(value[0]) + " has too high glucose value")
+            if value[0] < 30:
+                print("Patient: " + str(value[0]) + " has too high glucose value (mean value: " + str(value[1]) + ")")
             return True
         if value[1] < 70:
-            print("Patient: " + str(value[0]) + " has too low glucose value")
+            if value[0] < 30:
+                print("Patient: " + str(value[0]) + " has too low glucose value (mean value: " + str(value[1]) + ")")
             return True
         return False
 
 
-    values = lines.map(mapGlucoseValue).reduceByKeyAndWindow(reduceFunc, invFunc, 20, 5) \
+    values = lines.map(mapGlucoseValue).reduceByKeyAndWindow(reduceFunc, invFunc, 45, 15) \
         .map(lambda k: (k[0], k[1][0] / k[1][1])).filter(filterFunction)
-    values.pprint(30)
+    values.pprint(5)
 
     ssc.start()
     ssc.awaitTermination()

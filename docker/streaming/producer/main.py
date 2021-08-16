@@ -38,13 +38,13 @@ with client_hdfs.read(file_name, encoding = 'utf-8') as reader:
         print(row.to_json())
         producer.send(TOPIC, key=bytes(str(row['RecID']), 'utf-8'), value=bytes(row.to_json(), 'utf-8'))
         if i % 132 == 0:
-            time.sleep(5)
+            time.sleep(15)
         df_write = df.loc[i]
 
         # # Write to hdfs
         # while True:
         #     try:
-        #         with client_hdfs.write('/user/milica/test/write/test.csv', encoding='utf-8', append=True) as writer:
+        #         with client_hdfs.write('/user/test/write/test.csv', encoding='utf-8', append=True) as writer:
         #             df_write.to_csv(writer)
         #     except:
-        #         print("")
+        #         print("error writing to hdfs")
