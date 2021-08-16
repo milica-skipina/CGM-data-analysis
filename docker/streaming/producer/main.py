@@ -6,6 +6,7 @@ from kafka import KafkaProducer
 import kafka.errors
 import pandas as pd
 from hdfs import InsecureClient
+from pyspark.sql import SparkSession
 
 KAFKA_BROKER = os.environ["KAFKA_BROKER"]
 TOPIC = os.environ["TOPIC"]
@@ -42,9 +43,7 @@ with client_hdfs.read(file_name, encoding = 'utf-8') as reader:
         df_write = df.loc[i]
 
         # # Write to hdfs
-        # while True:
-        #     try:
-        #         with client_hdfs.write('/user/test/write/test.csv', encoding='utf-8', append=True) as writer:
-        #             df_write.to_csv(writer)
-        #     except:
-        #         print("error writing to hdfs")
+        # file = '/data/HDeviceCGM.txt'
+        # spark = SparkSession.builder.getOrCreate()
+        # df = spark.createDataFrame(df_write)
+        # df.coalesce(1).write.save(path=file_name, format='txt', mode='append', sep='|', header=True)
