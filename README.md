@@ -92,3 +92,15 @@ $ docker start kafka_producer
 $ docker exec -it spark-master-streaming bash
 $ /spark/bin/spark-submit --packages org.apache.spark:spark-streaming-kafka-0-8_2.11:2.4.4 home/scripts/warning-app.py
 ```
+
+## Visualization
+
+![Statistics](https://github.com/milica-skipina/ASVSP/blob/master/results/statistics.png)
+
+![Severity distribution by hour](https://github.com/milica-skipina/ASVSP/blob/master/results/patient2_by_hour.png)
+
+![Severity distribution by hour](https://github.com/milica-skipina/ASVSP/blob/master/results/pt2_by_hour.png)
+
+![CGM_VS_BGM](https://github.com/milica-skipina/ASVSP/blob/master/results/cgmVSbgm.png)
+
+
