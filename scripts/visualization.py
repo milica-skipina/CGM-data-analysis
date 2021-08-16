@@ -3,6 +3,7 @@ import os
 from tabulate import tabulate
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 # id = input("ID pacijenta:")
 # year = input("Godina:")
@@ -69,45 +70,35 @@ import matplotlib.pyplot as plt
 # file = "../data/results/statistics.csv"
 
 # ---------------------------------------------------------------------------------------------------------------------
-# # BY HOUR
-# file = "../results/severity_by_hour.csv"
-# df = pd.read_csv(file, sep='|', engine='python')
-# df = df.loc[df['PtID'] == 168]
-# df.groupby('Hour')[['VeryHigh', 'High', 'Low', 'VeryLow']].sum().plot(kind='bar', figsize=(10, 10),
-#                                                                       title='All')
-# plt.show()
-# fig, axs = plt.subplots(4, sharex=True, sharey=True)
-# fig.suptitle('Glucose level severity by hour')
-# df.groupby('Hour')['VeryHigh'].sum().plot(kind='bar', figsize=(10, 10), title='Very High', color='red', ax=axs[0])
-# df.groupby('Hour')['High'].sum().plot(kind='bar', figsize=(10, 10), title='High', color='orange', ax=axs[1])
-# # df.groupby('Hour')['InRange'].sum().plot(kind='bar', figsize=(10, 10), title='In Range', color='green', ax=axs[2])
-# df.groupby('Hour')['Low'].sum().plot(kind='bar', figsize=(10, 10), title='Low', color='lightblue', ax=axs[2])
-# df.groupby('Hour')['VeryLow'].sum().plot(kind='bar', figsize=(10, 10), title='Very Low', color='blue', ax=axs[3])
-# plt.show()
+# BY HOUR
+file = "../results/severity_by_hour.csv"
+df = pd.read_csv(file, sep='|', engine='python')
+df = df.loc[df['PtID'] == 168]
+df.groupby('Hour')[['VeryHigh', 'High', 'Low', 'VeryLow']].sum().plot(kind='bar', figsize=(10, 10),
+                                                                      title='All')
+plt.show()
+fig, axs = plt.subplots(4, sharex=True, sharey=True)
+fig.suptitle('Glucose level severity by hour')
+df.groupby('Hour')['VeryHigh'].sum().plot(kind='bar', figsize=(10, 10), title='Very High', color='red', ax=axs[0])
+df.groupby('Hour')['High'].sum().plot(kind='bar', figsize=(10, 10), title='High', color='orange', ax=axs[1])
+# df.groupby('Hour')['InRange'].sum().plot(kind='bar', figsize=(10, 10), title='In Range', color='green', ax=axs[2])
+df.groupby('Hour')['Low'].sum().plot(kind='bar', figsize=(10, 10), title='Low', color='lightblue', ax=axs[2])
+df.groupby('Hour')['VeryLow'].sum().plot(kind='bar', figsize=(10, 10), title='Very Low', color='blue', ax=axs[3])
+plt.show()
 # ---------------------------------------------------------------------------------------------------------------------
 
-
+# glucose value diff
 file = "../data/results/bgm_vs_cgm.csv"
 df = pd.read_csv(file, sep='|', engine='python')
-df['count'] = df.groupby('GlucoseValueDiff')['GlucoseValueDiff'].transform('count')
-res = df[['GlucoseValueDiff', 'count']]
-# res = res[res['count'] > 1000]
-res = res.sort_values(by=['GlucoseValueDiff'], ascending=True)
+# print(df.head())
+res = df.groupby(["GlucoseValueDiff"]).agg(count_col=pd.NamedAgg(column="GlucoseValueDiff", aggfunc="count"))
+# res = df.groupby('GlucoseValueDiff').agg('count')
 print(res.head())
-print("aaaa")
-res.groupby('GlucoseValueDiff')[['GlucoseValueDiff', 'count']].sum().plot(kind='bar', figsize=(10, 10), title='Diff', y='GlucoseValueDiff')
+res = res.sort_values(by=['GlucoseValueDiff'], ascending=True)
+res['GlucoseValueDiff'] = res.index
+print(res.dtypes)
+res.plot(kind='bar', figsize=(10, 10), title='Glucose Value Difference', x='GlucoseValueDiff', y='count_col')
+plt.xticks(np.arange(0,400,25))
 plt.show()
-#
-# df.groupby('GlucoseValueDiff')['GlucoseValueDiff'].count().plot(kind='bar', figsize=(10,10), title='Diff')
-# plt.show()
 
-# Hour
-# df = df.loc[df['PtID'] == 127]
-# df.plot.bar(figsize=(10,10), title='Diff', x='Hour')
-# plt.show()
-
-
-# df.plot.hist(figsize=(10,10), title='Diff', by='Hour')
-# print(df.groupby("Hour").sum())
-# df.groupby("Hour").sum().plot(kind='bar', figsize=(20,20), title='GLucose levels by hour')
-# plt.show()
+# ---------------------------------------------------------------------------------------------------------------------

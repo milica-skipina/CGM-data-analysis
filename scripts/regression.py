@@ -22,8 +22,8 @@ def quiet_logs(sc):
     logger.LogManager.getLogger("akka").setLevel(logger.Level.ERROR)
 
 
-# # fill missing values
-# # define function to create date range
+# fill missing values
+# define function to create date range
 def generate_time_interval(t1, t2, step=300):
     """Return a list of equally spaced points between t1 and t2 with step size step."""
     return [t1 + step * x for x in range(int((t2 - t1) / step) + 1)]
@@ -130,7 +130,9 @@ rf = RandomForestRegressor(labelCol='GlucoseValue',
                            )
 print("RF training started...")
 model = rf.fit(training_data)
-print("Prediction")
+model.write().overwrite().save(HDFS_NAMENODE + "/models/rf_model.model")
+print("Model saved")
+print("Prediction:")
 predictions = model.transform(test_data)
 predictions = predictions.withColumn("prediction", round(col("prediction")))
 
@@ -165,7 +167,7 @@ print("Interpolation Predictions - Test data")
 interpolation_predictions.select("prediction", "GlucoseValue", "DateTime").show(15)
 
 # ---------------------------------------------------------------------------------------------------------------------
-# find missing timestamps
+print("finding missing timestamps...")
 date_range_udf = udf(generate_time_interval, ArrayType(LongType()))
 
 pt_interval = df_cgm.select("RecID", "PtID", "DateTime") \
@@ -207,30 +209,30 @@ res_file = "/regression/all_dates.csv"
 df_all_dates.repartition(1).write.mode("overwrite").option("header", "true").option("sep", "|").csv(
     HDFS_NAMENODE + res_file)
 # ---------------------------------------------------------------------------------------------------------------------
-# res_file = "/regression/all_dates.csv"
-#
-# df_all_dates = spark.read.option("sep", "|").option("header", "true").csv(
-#     HDFS_NAMENODE + res_file)
-# model = RandomForestRegressionModel.load(HDFS_NAMENODE + "/models/rf_model.model")
-# print("model loaded")
-# interpol_udf = udf(interpol, FloatType())
-# required_features = [
-#     'Hour',
-#     'PGV',
-#     'PDT',
-#     'NDT',
-#     'NGV',
-#     'SPDT',
-#     'SPGV',
-#     'SNDT',
-#     'SNGV',
-#     'TPDT',
-#     'TPGV',
-#     'TNDT',
-#     'TNGV'
-# ]
-#
-# assembler = VectorAssembler(inputCols=required_features, outputCol='input')
+res_file = "/regression/all_dates.csv"
+
+df_all_dates = spark.read.option("sep", "|").option("header", "true").csv(
+    HDFS_NAMENODE + res_file)
+model = RandomForestRegressionModel.load(HDFS_NAMENODE + "/models/rf_model.model")
+print("model loaded")
+interpol_udf = udf(interpol, FloatType())
+required_features = [
+    'Hour',
+    'PGV',
+    'PDT',
+    'NDT',
+    'NGV',
+    'SPDT',
+    'SPGV',
+    'SNDT',
+    'SNGV',
+    'TPDT',
+    'TPGV',
+    'TNDT',
+    'TNGV'
+]
+
+assembler = VectorAssembler(inputCols=required_features, outputCol='input')
 # ---------------------------------------------------------------------------------------------------------------------
 
 df_all_dates.show(5)
@@ -267,7 +269,6 @@ print("Dataset")
 dataset.show(5)
 predictions = model.transform(dataset)
 print("Predictions")
-predictions.show(5)
 predictions = predictions.withColumn("GlucoseValue", round(col("prediction"))).drop('input').drop('prediction')
 print("Random Forest Predictions")
 predictions.show(15, truncate=False)
@@ -321,9 +322,7 @@ res_file = "/regression/final.csv"
 interpolation_predictions.repartition(1).write.mode("overwrite").option("header", "true").option("sep", "|").csv(
     HDFS_NAMENODE + res_file)
 
-model.write().overwrite().save(HDFS_NAMENODE + "/models/rf_model.model")
-
-
+# ---------------------------------------------------------------------------------------------------------------------
 # df_all_dates = df_all_dates.withColumn("SPDT", df_all_dates.filter(df_all_dates.RecID == col("PDT")).PDT) \
 #     .withColumn("SNDT", df_all_dates.filter(df_all_dates.RecID == col("NDT")).NDT)
 # df_all_dates = df_all_dates.withColumn("rec_pdt", create_map(["RecID", "PDT"]))
