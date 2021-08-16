@@ -6,7 +6,6 @@ from kafka import KafkaProducer
 import kafka.errors
 import pandas as pd
 from hdfs import InsecureClient
-from pyspark.sql import SparkSession
 
 KAFKA_BROKER = os.environ["KAFKA_BROKER"]
 TOPIC = os.environ["TOPIC"]
