@@ -35,7 +35,7 @@ df_cgm = df_cgm.drop("DexInternalDtTmDaysFromEnroll").drop("DexInternalTm").drop
     .withColumn("DateTime", to_timestamp(col("DateTime"))) \
     .withColumn("Hour", hour("Time"))
 df_cgm.show(5)
-# df_cgm = df_cgm.filter("GlucoseValue <= 500")
+df_cgm = df_cgm.filter("GlucoseValue <= 500")
 
 # find how many times glucose value could be measured
 device_not_used = df_cgm.select("PtID", "DateTime", "GlucoseValue") \
@@ -47,7 +47,6 @@ device_not_used = df_cgm.select("PtID", "DateTime", "GlucoseValue") \
 device_not_used = device_not_used.select("PtID", "DeviceNotUsed")
 print("-------------------- Device not used by patient --------------------")
 device_not_used.show(5)
-
 
 print("-------------------- BGM data --------------------")
 bgm_file = "/processed/HDeviceBGM.csv"
@@ -92,6 +91,77 @@ df_gender_glucose.show(10)
 gender_glucose_file = "/results/gender_glucose.csv"
 df_gender_glucose.repartition(1).write.mode("overwrite").option("header", "true") \
     .csv(HDFS_NAMENODE + gender_glucose_file)
+
+# CGM VS BGM
+print("-------------------- CGM and BGM --------------------")
+cgm_vs_bgm = df_bgm.join(df_cgm, ["PtID", "Date"], "inner")
+cgm_vs_bgm.show(5)
+
+print("-------------------- CGM VS BGM --------------------")
+cgm_vs_bgm = cgm_vs_bgm.withColumn("DiffInSeconds",
+                                   abs(col("DateTimeBGM").cast(LongType()) - col("DateTime").cast(LongType()))) \
+    .withColumn("DiffInMinutes", round(col("DiffInSeconds") / 60))
+
+cgm_vs_bgm = cgm_vs_bgm.filter("DiffInSeconds < 300") \
+    .withColumn("GlucoseValueDiff", abs(col("GlucoseValue") - col("GlucoseValueBGM")))
+cgm_vs_bgm.show(10)
+cgm_vs_bgm.agg(max("GlucoseValueDiff"), mean("GlucoseValueDiff")).show()
+print("Top 10 with the highest glucose value difference")
+cgm_vs_bgm.orderBy("GlucoseValueDiff", ascending=False).show(10)
+print("Top 10 with the smallest glucose value difference")
+cgm_vs_bgm.orderBy("GlucoseValueDiff", ascending=True).show(10)
+temp = cgm_vs_bgm.groupBy("GlucoseValueDiff").count()
+print("GlucoseValueDiff count - top 20")
+temp.orderBy("count", ascending=False).show(20)
+
+cgm_vs_bgm = cgm_vs_bgm.withColumn("PercentageDiff", when((col("GlucoseValueBGM") > 80),
+                                                          col("GlucoseValueDiff") / col("GlucoseValueBGM")).otherwise(
+    -1))
+
+bad_value = cgm_vs_bgm.filter((col("PercentageDiff") > 20) |
+                              ((col("PercentageDiff") == -1) & (col("GlucoseValueDiff") > 20)))
+
+print("Bad value CGM VS BGM " + str(bad_value.count()) + " of total " + str(cgm_vs_bgm.count()) + " values")
+bad_value.show(10)
+
+bgm_vs_cgm_file = "/results/bgm_vs_cgm.csv"
+cgm_vs_bgm.repartition(1).write.mode("overwrite").option("header", "true").option("sep", "|").csv(
+    HDFS_NAMENODE + bgm_vs_cgm_file)
+
+print("GlucoseSeverity in bad values")
+bad_value = bad_value.withColumn("GlucoseSeverity",
+                                 when(col("GlucoseValueBGM") >= 250, "VeryHigh").
+                                 when((col("GlucoseValueBGM") < 250) & (col("GlucoseValueBGM") >= 180), "High").
+                                 when((col("GlucoseValueBGM") < 180) & (col("GlucoseValueBGM") >= 70), "InRange").
+                                 when((col("GlucoseValueBGM") < 70) & (col("GlucoseValueBGM") >= 54), "Low").
+                                 otherwise("VeryLow"))
+bad_value.groupBy("GlucoseSeverity").count().show()
+
+print("CGM higher or lower than BGM")
+temp = bad_value.withColumn("Higher_Lower",
+                            when((col("GlucoseValue") - col("GlucoseValueBGM")) > 0, "H").otherwise("L"))
+temp.groupBy("Higher_Lower").count().show()
+
+print("Mean value of BGM for GlucoseDiff > 100")
+bad_value.agg(min("GlucoseValueBGM"), max("GlucoseValueBGM"), mean("GlucoseValueBGM")).show()
+
+print("GlucoseValueDiff > 100")
+bad_value.filter("GlucoseValueDiff > 100").groupBy("GlucoseSeverity").count().show()
+
+bad_value_recid = [row["RecID"] for row in bad_value.collect()]
+df_cgm = df_cgm.withColumn("BadValue", when(col("RecID").isin(bad_value_recid), True).otherwise(False))
+print(df_cgm.filter(col("BadValue")).count())
+window_spec = Window.partitionBy("PtID").orderBy("DateTime")
+
+df_cgm = df_cgm.withColumn("BadValue", (col("BadValue")) | (
+        (abs(lag("GlucoseValue", 1).over(window_spec) - col("GlucoseValue")) / col("GlucoseValue") > 0.1) & lag(
+    "BadValue", 1).over(window_spec)) | (
+        (abs(lag("GlucoseValue", -1).over(window_spec) - col("GlucoseValue")) / col("GlucoseValue") > 0.1) & lag(
+    "BadValue", -1).over(window_spec)))
+
+# remove bad values
+df_cgm = df_cgm.filter(~col("BadValue"))
+df_cgm = df_cgm.drop("BadValue")
 
 # statistics
 # values by glucose level severity for grouped by patient and date
@@ -168,70 +238,17 @@ glucose_by_hour.repartition(1).write.mode("overwrite").option("header", "true").
 
 print("Glucose severity by gender")
 df_gender_glucose_sev = df_gender_glucose.withColumn("GlucoseSeverity",
-                             when(col("GlucoseValue") >= 250, "VeryHigh").
-                             when((col("GlucoseValue") < 250) & (col("GlucoseValue") >= 180), "High").
-                             when((col("GlucoseValue") < 180) & (col("GlucoseValue") >= 70), "InRange").
-                             when((col("GlucoseValue") < 70) & (col("GlucoseValue") >= 54), "Low").
-                             otherwise("VeryLow"))
+                                                     when(col("GlucoseValue") >= 250, "VeryHigh").
+                                                     when((col("GlucoseValue") < 250) & (col("GlucoseValue") >= 180),
+                                                          "High").
+                                                     when((col("GlucoseValue") < 180) & (col("GlucoseValue") >= 70),
+                                                          "InRange").
+                                                     when((col("GlucoseValue") < 70) & (col("GlucoseValue") >= 54),
+                                                          "Low").
+                                                     otherwise("VeryLow"))
 df_gender_glucose_sev.groupBy("Gender", "GlucoseSeverity").count().show()
 
 print("Device not used by gender")
 device_not_used_gender = device_not_used.join(df_gender_glucose, ["PtID"], "inner")
-device_not_used_gender.groupBy("Gender").agg(mean("DeviceNotUsed").alias("DeviceNotUsedMean"))\
-    .withColumn("DeviceNotUsedMean(hour)", col("DeviceNotUsedMean")*5/3600).show()
-
-
-# CGM VS BGM
-print("-------------------- CGM and BGM --------------------")
-cgm_vs_bgm = df_bgm.join(df_cgm, ["PtID", "Date"], "inner")
-cgm_vs_bgm.show(5)
-
-print("-------------------- CGM VS BGM --------------------")
-cgm_vs_bgm = cgm_vs_bgm.withColumn("DiffInSeconds",
-                                   abs(col("DateTimeBGM").cast(LongType()) - col("DateTime").cast(LongType()))) \
-    .withColumn("DiffInMinutes", round(col("DiffInSeconds") / 60))
-
-cgm_vs_bgm = cgm_vs_bgm.filter("DiffInSeconds < 300") \
-    .withColumn("GlucoseValueDiff", abs(col("GlucoseValue") - col("GlucoseValueBGM")))
-cgm_vs_bgm.show(10)
-cgm_vs_bgm.agg(max("GlucoseValueDiff"), mean("GlucoseValueDiff")).show()
-print("Top 10 with the highest glucose value difference")
-cgm_vs_bgm.orderBy("GlucoseValueDiff", ascending=False).show(10)
-print("Top 10 with the smallest glucose value difference")
-cgm_vs_bgm.orderBy("GlucoseValueDiff", ascending=True).show(10)
-temp = cgm_vs_bgm.groupBy("GlucoseValueDiff").count()
-print("GlucoseValueDiff count - top 20")
-temp.orderBy("count", ascending=False).show(20)
-
-cgm_vs_bgm = cgm_vs_bgm.withColumn("PercentageDiff", when((col("GlucoseValueBGM") > 80),
-                                                          col("GlucoseValueDiff") / col("GlucoseValueBGM")).otherwise(
-    -1))
-
-bad_value = cgm_vs_bgm.filter((col("PercentageDiff") > 20) |
-                              ((col("PercentageDiff") == -1) & (col("GlucoseValueDiff") > 20)))
-
-print("Bad value CGM VS BGM " + str(bad_value.count()) + "of total " + str(cgm_vs_bgm.count()) + " values")
-bad_value.show(10)
-
-bgm_vs_cgm_file = "/results/bgm_vs_cgm.csv"
-cgm_vs_bgm.repartition(1).write.mode("overwrite").option("header", "true").option("sep", "|").csv(
-    HDFS_NAMENODE + bgm_vs_cgm_file)
-
-print("GlucoseSeverity in bad values")
-bad_value = bad_value.withColumn("GlucoseSeverity",
-                                 when(col("GlucoseValueBGM") >= 250, "VeryHigh").
-                                 when((col("GlucoseValueBGM") < 250) & (col("GlucoseValueBGM") >= 180), "High").
-                                 when((col("GlucoseValueBGM") < 180) & (col("GlucoseValueBGM") >= 70), "InRange").
-                                 when((col("GlucoseValueBGM") < 70) & (col("GlucoseValueBGM") >= 54), "Low").
-                                 otherwise("VeryLow"))
-bad_value.groupBy("GlucoseSeverity").count().show()
-
-print("Does CGM higher or lower than BGM")
-temp = bad_value.withColumn("Higher_Lower", when((col("GlucoseValue") - col("GlucoseValueBGM")) > 0, "H").otherwise("L"))
-temp.groupBy("Higher_Lower").count().show()
-
-print("Mean value of BGM for GlucoseDiff > 100")
-bad_value.agg(min("GlucoseValueBGM"), max("GlucoseValueBGM"), mean("GlucoseValueBGM")).show()
-
-print("GlucoseValueDiff > 100")
-bad_value.filter("GlucoseValueDiff > 100").groupBy("GlucoseSeverity").count().show()
+device_not_used_gender.groupBy("Gender").agg(mean("DeviceNotUsed").alias("DeviceNotUsedMean")) \
+    .withColumn("DeviceNotUsedMean(hour)", col("DeviceNotUsedMean") * 5 / 3600).show()
